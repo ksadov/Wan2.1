@@ -490,7 +490,10 @@ class WanVace(WanT2V):
             x0 = latents
             if offload_model:
                 self.model.cpu()
-                torch.cuda.empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                elif torch.backends.mps.is_available():
+                    torch.mps.empty_cache()
             if self.rank == 0:
                 videos = self.decode_latent(x0, input_ref_images)
 
@@ -498,7 +501,10 @@ class WanVace(WanT2V):
         del sample_scheduler
         if offload_model:
             gc.collect()
-            torch.cuda.synchronize()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            elif torch.backends.mps.is_available():
+                torch.mps.synchronize()
         if dist.is_initialized():
             dist.barrier()
 
@@ -524,7 +530,12 @@ class WanVaceMP(WanVace):
         self.ring_size = ring_size
         self.dynamic_load()
 
-        self.device = "cpu" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            self.device = "cuda"
+        elif torch.backends.mps.is_available():
+            self.device = "mps"
+        else:
+            self.device = "cpu"
         self.vid_proc = VaceVideoProcessor(
             downsample=tuple(
                 [x * y for x, y in zip(config.vae_stride, config.patch_size)]
